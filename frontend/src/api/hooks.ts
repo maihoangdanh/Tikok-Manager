@@ -58,7 +58,13 @@ export function useSyncCampaigns(companyId: string | null) {
   return useMutation({
     mutationFn: async () => {
       if (!companyId) return
+      // sync standard + reclassify GMV, then try GMV Shop API sync (optional)
       await api.post('/campaigns/sync', null, { params: { company_id: companyId } })
+      try {
+        await api.post('/campaigns/gmv/sync', null, { params: { company_id: companyId } })
+      } catch {
+        // GMV sync optional — fails gracefully if Shop credentials not set
+      }
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['campaigns', companyId] })

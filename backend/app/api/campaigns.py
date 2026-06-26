@@ -141,6 +141,15 @@ def sync_now(company_id: str = Query(...), db: Session = Depends(get_db), _=Depe
         synced += 1
     db.commit()
 
+    # Reclassify existing campaigns based on objective_type
+    for tc in tiktok_campaigns:
+        obj = tc.get('objective_type', '').upper()
+        if 'GMV' in obj or 'PRODUCT_SALES' in obj:
+            camp = db.query(Campaign).filter_by(id=tc['campaign_id']).first()
+            if camp and camp.type == 'standard':
+                camp.type = 'gmv_product'
+    db.commit()
+
     # Sync metrics for last 7 days
     from datetime import date, timedelta
     today = date.today()
