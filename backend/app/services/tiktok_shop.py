@@ -42,6 +42,22 @@ class TikTokShopClient:
                 raise RuntimeError(f"TikTok Shop API error {data.get('code')}: {data.get('message')}")
             return data.get("data", {})
 
+    def list_campaigns(self) -> list[dict]:
+        """List all GMV Max campaigns from TikTok Shop Promotion API."""
+        results = []
+        page_token = None
+        while True:
+            params = {"page_size": 50}
+            if page_token:
+                params["page_token"] = page_token
+            data = self._get("/api/v2/promotion/campaign/list", params)
+            campaigns = data.get("campaigns") or data.get("campaign_list") or []
+            results.extend(campaigns)
+            page_token = data.get("next_page_token") or data.get("next_cursor")
+            if not page_token or not campaigns:
+                break
+        return results
+
     def get_gmv_campaign_metrics(self, campaign_id: str, start_date: str, end_date: str) -> dict:
         data = self._get("/api/v2/promotion/campaign/metrics", {
             "campaign_ids": campaign_id, "start_date": start_date, "end_date": end_date,

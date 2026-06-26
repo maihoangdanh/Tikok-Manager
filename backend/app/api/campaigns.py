@@ -141,15 +141,6 @@ def sync_now(company_id: str = Query(...), db: Session = Depends(get_db), _=Depe
         synced += 1
     db.commit()
 
-    # Reclassify existing campaigns based on objective_type
-    for tc in tiktok_campaigns:
-        obj = tc.get('objective_type', '').upper()
-        if 'GMV' in obj or 'PRODUCT_SALES' in obj:
-            camp = db.query(Campaign).filter_by(id=tc['campaign_id']).first()
-            if camp and camp.type == 'standard':
-                camp.type = 'gmv_product'
-    db.commit()
-
     # Sync metrics for last 7 days
     from datetime import date, timedelta
     today = date.today()
@@ -206,57 +197,62 @@ def sync_gmv(company_id: str = Query(...), db: Session = Depends(get_db), _=Depe
     from app.services.crypto import decrypt_credentials
     from app.services.tiktok_shop import TikTokShopClient
     from datetime import date, timedelta
+    import logging
+    log = logging.getLogger(__name__)
 
-    ads_cred = db.query(PlatformCredential).filter_by(company_id=company_id, platform='tiktok_ads').first()
     shop_cred = db.query(PlatformCredential).filter_by(company_id=company_id, platform='tiktok_shop').first()
-    if not ads_cred or not shop_cred:
-        raise HTTPException(status_code=400, detail='Both TikTok Ads and Shop credentials required')
+    if not shop_cred:
+        raise HTTPException(status_code=400, detail='TikTok Shop credentials not configured')
 
-    ac = decrypt_credentials(ads_cred.credentials_encrypted)
     sc = decrypt_credentials(shop_cred.credentials_encrypted)
-    ads_client = TikTokAdsClient(access_token=ac['access_token'], advertiser_id=ac['advertiser_id'])
     shop_client = TikTokShopClient(sc['app_key'], sc['app_secret'], sc['access_token'], sc['shop_id'])
 
     today = date.today()
     start = today - timedelta(days=6)
 
-    tiktok_campaigns = ads_client.list_campaigns()
+    # Pull GMV Max campaigns from TikTok Shop API (NOT Ads API)
+    shop_campaigns = shop_client.list_campaigns()
     synced = 0
-    for tc in tiktok_campaigns:
-        obj = tc.get('objective_type', '').upper()
-        if 'GMV' not in obj and 'PRODUCT_SALES' not in obj:
+    for tc in shop_campaigns:
+        camp_id = str(tc.get('campaign_id') or tc.get('id') or '')
+        if not camp_id:
             continue
-        camp_type = 'gmv_product'
-        existing = db.query(Campaign).filter_by(id=tc['campaign_id']).first()
+        camp_name = tc.get('campaign_name') or tc.get('name') or camp_id
+        # Determine type: gmv_live or gmv_product based on campaign_type field
+        raw_type = str(tc.get('campaign_type') or tc.get('type') or '').lower()
+        camp_type = 'gmv_live' if 'live' in raw_type else 'gmv_product'
+        raw_status = str(tc.get('operation_status') or tc.get('status') or 'ENABLE').upper()
+        status = 'active' if raw_status in ('ENABLE', 'ACTIVE', 'ON') else 'paused'
+
+        existing = db.query(Campaign).filter_by(id=camp_id).first()
         if existing:
-            existing.name = tc['campaign_name']
-            existing.status = 'active' if tc['operation_status'] == 'ENABLE' else 'paused'
-            existing.budget_daily = tc.get('budget', 0)
+            existing.name = camp_name
+            existing.status = status
+            existing.type = camp_type
         else:
             db.add(Campaign(
-                id=tc['campaign_id'], company_id=company_id,
-                name=tc['campaign_name'], type=camp_type,
-                status='active' if tc['operation_status'] == 'ENABLE' else 'paused',
-                budget_daily=tc.get('budget', 0), budget_spend=0,
+                id=camp_id, company_id=company_id,
+                name=camp_name, type=camp_type,
+                status=status, budget_daily=0, budget_spend=0,
             ))
         synced += 1
 
         try:
-            metrics = shop_client.get_gmv_campaign_metrics(tc['campaign_id'], start.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
-            # store as latest metrics row (single row for today)
-            existing_m = db.query(CampaignMetrics).filter_by(campaign_id=tc['campaign_id'], date=today.strftime('%Y-%m-%d')).first()
-            gmv_vals = dict(cost=metrics.get('cost', 0), sku_orders=metrics.get('sku_orders', 0),
-                            cost_per_order=metrics.get('cost_per_order', 0),
-                            gross_revenue=metrics.get('gross_revenue', 0), roi=metrics.get('roi', 0),
-                            spend=metrics.get('cost', 0), roas=0, impressions=0, clicks=0, ctr=0, cpc=0, conversions=0, cpa=0)
+            metrics = shop_client.get_gmv_campaign_metrics(camp_id, start.strftime('%Y-%m-%d'), today.strftime('%Y-%m-%d'))
+            existing_m = db.query(CampaignMetrics).filter_by(campaign_id=camp_id, date=today.strftime('%Y-%m-%d')).first()
+            gmv_vals = dict(
+                cost=metrics.get('cost', 0), sku_orders=metrics.get('sku_orders', 0),
+                cost_per_order=metrics.get('cost_per_order', 0),
+                gross_revenue=metrics.get('gross_revenue', 0), roi=metrics.get('roi', 0),
+                spend=metrics.get('cost', 0), roas=0, impressions=0, clicks=0, ctr=0, cpc=0, conversions=0, cpa=0,
+            )
             if existing_m:
                 for k, v in gmv_vals.items():
                     setattr(existing_m, k, v)
             else:
-                db.add(CampaignMetrics(campaign_id=tc['campaign_id'], date=today.strftime('%Y-%m-%d'), **gmv_vals))
+                db.add(CampaignMetrics(campaign_id=camp_id, date=today.strftime('%Y-%m-%d'), **gmv_vals))
         except Exception as e:
-            import logging
-            logging.getLogger(__name__).error(f'GMV metrics sync error {tc[campaign_id]}: {e}')
+            log.error(f'GMV metrics sync error {camp_id}: {e}')
 
     db.commit()
     return {'synced_gmv_campaigns': synced}
