@@ -15,7 +15,7 @@ class TikTokShopClient:
         sorted_params = sorted(all_params.items())
         base_str += "".join(f"{k}{v}" for k, v in sorted_params if k not in ("sign", "access_token"))
         base_str += self.app_secret
-        return hmac.new(self.app_secret.encode(), base_str.encode(), hashlib.sha256).hexdigest().upper()
+        return hmac.new(self.app_secret.encode(), base_str.encode(), hashlib.sha256).hexdigest()
 
     def _get(self, path: str, params: dict) -> dict:
         ts = int(time.time())

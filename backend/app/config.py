@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     refresh_token_expire_days: int = 30
     encryption_key: str = "0" * 64
     tiktok_ads_base_url: str = "https://business-api.tiktok.com/open_api/v1.3"
-    tiktok_shop_base_url: str = "https://open-api.tiktok.com"
+    tiktok_shop_base_url: str = "https://open-api.tiktokglobalshop.com"
     admin_email: str = "admin@example.com"
     admin_password: str = "changeme"
 
