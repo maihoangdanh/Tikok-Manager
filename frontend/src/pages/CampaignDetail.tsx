@@ -15,15 +15,29 @@ export default function CampaignDetail() {
 
   const campaign = campaigns.find((c: any) => c.id === id)
 
-  if (isLoading) return <div className="p-6 text-xs text-gray-400">Đang tải...</div>
-  if (!campaign) return <div className="p-6 text-gray-400 text-sm">Campaign không tồn tại hoặc không phải standard campaign.</div>
+  if (!company || isLoading) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <Topbar title="Chi tiết Campaign" breadcrumb={{ label: 'Campaigns', to: '/campaigns' }} />
+        <div className="p-6 text-xs text-gray-400">Đang tải...</div>
+      </div>
+    )
+  }
+
+  if (!campaign) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <Topbar title="Chi tiết Campaign" breadcrumb={{ label: 'Campaigns', to: '/campaigns' }} />
+        <div className="p-6 text-gray-400 text-sm">Campaign không tìm thấy. Thử bấm <strong>Đồng bộ</strong> để pull dữ liệu mới nhất.</div>
+      </div>
+    )
+  }
 
   const m = campaign.metrics
   const pm = campaign.prev_metrics
 
   function toggleStatus() {
-    const newStatus = campaign.status === 'active' ? 'paused' : 'active'
-    updateStatus.mutate({ id: campaign.id, status: newStatus, type: 'standard', companyId: company!.id })
+    updateStatus.mutate({ id: campaign.id, status: campaign.status === 'active' ? 'paused' : 'active', type: 'standard', companyId: company!.id })
   }
 
   return (
@@ -31,7 +45,6 @@ export default function CampaignDetail() {
       <Topbar title={campaign.name} breadcrumb={{ label: 'Campaigns', to: '/campaigns' }} />
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
-        {/* Campaign header */}
         <div className="bg-white border border-gray-100 rounded-xl p-4 flex items-center justify-between">
           <div>
             <div className="text-sm font-semibold text-gray-800 mb-1">{campaign.name}</div>
@@ -50,7 +63,6 @@ export default function CampaignDetail() {
           </button>
         </div>
 
-        {/* Metrics */}
         <div className="grid grid-cols-4 gap-3">
           {[
             { label: 'Chi tiêu', val: formatCurrency(m.spend), cur: m.spend, prev: pm.spend },
@@ -70,31 +82,29 @@ export default function CampaignDetail() {
           ))}
         </div>
 
-        {/* Budget */}
         <div className="bg-white border border-gray-100 rounded-xl p-4">
           <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Ngân sách</div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-8">
             <div>
               <div className="text-[11px] text-gray-400 mb-0.5">Budget ngày</div>
               <div className="text-sm font-semibold">{formatCurrency(campaign.budget_daily)}</div>
             </div>
             <div>
-              <div className="text-[11px] text-gray-400 mb-0.5">Đã chi hôm nay</div>
+              <div className="text-[11px] text-gray-400 mb-0.5">Đã chi (7 ngày)</div>
               <div className="text-sm font-semibold">{formatCurrency(campaign.budget_spend)}</div>
             </div>
             <div>
-              <div className="text-[11px] text-gray-400 mb-0.5">Còn lại</div>
-              <div className="text-sm font-semibold text-green-700">{formatCurrency(Math.max(0, campaign.budget_daily - campaign.budget_spend))}</div>
+              <div className="text-[11px] text-gray-400 mb-0.5">Campaign ID</div>
+              <div className="text-xs font-mono text-gray-600">{campaign.id}</div>
             </div>
           </div>
         </div>
 
-        {/* Ads management note */}
         <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex items-center gap-3">
           <ExternalLink size={16} className="text-gray-400 flex-shrink-0" />
           <div>
             <div className="text-xs font-medium text-gray-700 mb-0.5">Quản lý Ads & Ad Groups</div>
-            <div className="text-[11px] text-gray-500">Để xem và quản lý từng ad trong campaign này, truy cập TikTok Ads Manager. Campaign ID: <span className="font-mono">{campaign.id}</span></div>
+            <div className="text-[11px] text-gray-500">Để xem và chỉnh từng ad, truy cập TikTok Ads Manager với Campaign ID: <span className="font-mono">{campaign.id}</span></div>
           </div>
         </div>
 

@@ -17,22 +17,27 @@ export default function GmvDetail() {
 
   const campaign = gmvCamps.find((c: any) => c.id === id)
 
-  if (isLoading) return <div className="p-6 text-xs text-gray-400">Đang tải...</div>
-  if (!campaign) return <div className="p-6 text-gray-400 text-sm">Campaign không tồn tại hoặc không phải GMV campaign.</div>
+  if (!company || isLoading) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <Topbar title="GMV Campaign" breadcrumb={{ label: 'Campaigns', to: '/campaigns' }} />
+        <div className="p-6 text-xs text-gray-400">Đang tải...</div>
+      </div>
+    )
+  }
+
+  if (!campaign) {
+    return (
+      <div className="flex flex-col h-full overflow-hidden">
+        <Topbar title="GMV Campaign" breadcrumb={{ label: 'Campaigns', to: '/campaigns' }} />
+        <div className="p-6 text-gray-400 text-sm">Campaign không tìm thấy. Thử bấm <strong>Đồng bộ GMV</strong> để pull dữ liệu từ TikTok Shop.</div>
+      </div>
+    )
+  }
 
   const m = campaign.metrics
   const pm = campaign.prev_metrics
   const isLive = campaign.type === 'gmv_live'
-
-  function toggleCampaign() {
-    const newStatus = campaign.status === 'active' ? 'paused' : 'active'
-    updateStatus.mutate({ id: campaign.id, status: newStatus, type: campaign.type, companyId: company!.id })
-  }
-
-  function toggleCreative(crId: string, crStatus: string) {
-    const newStatus = crStatus === 'active' ? 'paused' : 'active'
-    updateCreative.mutate({ id: crId, status: newStatus })
-  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -42,15 +47,20 @@ export default function GmvDetail() {
         <div className="bg-white border border-gray-100 rounded-xl p-4 flex items-center justify-between">
           <div>
             <div className="text-sm font-semibold text-gray-800 mb-1">{campaign.name}</div>
-            <StatusBadge status={campaign.status} />
+            <div className="flex items-center gap-2">
+              <StatusBadge status={campaign.status} />
+              <span className="text-[10px] text-gray-400 bg-purple-50 text-purple-600 px-2 py-0.5 rounded-full">
+                {isLive ? 'GMV Live' : 'GMV Product'}
+              </span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="flex items-start gap-2 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-xs text-blue-700">
-              <Info size={12} className="flex-shrink-0 mt-0.5" />
-              <span>GMV {isLive ? 'Live' : 'Product'} — TikTok tự quản lý targeting.</span>
+            <div className="flex items-center gap-1.5 bg-blue-50 border border-blue-100 rounded-xl px-3 py-2 text-xs text-blue-700">
+              <Info size={12} className="flex-shrink-0" />
+              TikTok tự quản lý targeting
             </div>
             <button
-              onClick={toggleCampaign}
+              onClick={() => updateStatus.mutate({ id: campaign.id, status: campaign.status === 'active' ? 'paused' : 'active', type: campaign.type, companyId: company.id })}
               disabled={updateStatus.isPending}
               className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors disabled:opacity-50 ${campaign.status === 'active' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'}`}>
               {updateStatus.isPending ? '...' : campaign.status === 'active' ? 'Pause' : 'Enable'}
@@ -60,10 +70,10 @@ export default function GmvDetail() {
 
         <div className="grid grid-cols-4 gap-3">
           {[
-            { label: 'Cost', val: formatCurrency(m.cost), cur: m.cost, prev: pm.cost, lower: true },
-            { label: 'SKU Orders', val: formatNumber(m.sku_orders), cur: m.sku_orders, prev: pm.sku_orders },
-            { label: 'Gross Revenue', val: formatCurrency(m.gross_revenue), cur: m.gross_revenue, prev: pm.gross_revenue },
-            { label: 'ROI', val: m.roi > 0 ? `${m.roi.toFixed(2)}x` : '—', cur: m.roi, prev: pm.roi },
+            { label: 'Cost', val: formatCurrency(m.cost ?? 0), cur: m.cost ?? 0, prev: pm.cost ?? 0, lower: true },
+            { label: 'SKU Orders', val: formatNumber(m.sku_orders ?? 0), cur: m.sku_orders ?? 0, prev: pm.sku_orders ?? 0 },
+            { label: 'Gross Revenue', val: formatCurrency(m.gross_revenue ?? 0), cur: m.gross_revenue ?? 0, prev: pm.gross_revenue ?? 0 },
+            { label: 'ROI', val: (m.roi ?? 0) > 0 ? `${(m.roi).toFixed(2)}x` : '—', cur: m.roi ?? 0, prev: pm.roi ?? 0 },
           ].map(metric => (
             <div key={metric.label} className="bg-white border border-gray-100 rounded-xl p-3.5">
               <div className="text-[11px] text-gray-500 mb-1">{metric.label}</div>
@@ -81,7 +91,9 @@ export default function GmvDetail() {
             {loadingCreatives ? (
               <div className="p-6 text-center text-xs text-gray-400">Đang tải...</div>
             ) : creatives.length === 0 ? (
-              <div className="p-8 text-center text-xs text-gray-400">Chưa có creatives — bấm Đồng bộ để pull từ TikTok Shop.</div>
+              <div className="p-8 text-center text-xs text-gray-400">
+                Chưa có creatives. Bấm <strong>Đồng bộ GMV</strong> để pull từ TikTok Shop.
+              </div>
             ) : (
               <table className="w-full text-xs">
                 <thead>
@@ -106,11 +118,11 @@ export default function GmvDetail() {
                         </span>
                       </td>
                       <td className="px-3 py-3">
-                        <DeltaBadge current={cr.metrics.roi} previous={cr.prev_metrics.roi} />
+                        <DeltaBadge current={cr.metrics.roi} previous={cr.prev_metrics?.roi ?? 0} />
                       </td>
                       <td className="px-3 py-3">
                         <button
-                          onClick={() => toggleCreative(cr.id, cr.status)}
+                          onClick={() => updateCreative.mutate({ id: cr.id, status: cr.status === 'active' ? 'paused' : 'active' })}
                           disabled={updateCreative.isPending}
                           className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-colors disabled:opacity-50 ${cr.status === 'active' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'bg-blue-600 text-white border-blue-600'}`}>
                           {cr.status === 'active' ? 'Tắt' : 'Bật'}
@@ -125,16 +137,14 @@ export default function GmvDetail() {
         )}
 
         {isLive && (
-          <div className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-              <span className="text-sm font-semibold text-gray-800">Sessions live</span>
-              <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">read-only</span>
-            </div>
-            <div className="p-8 text-center text-xs text-gray-400">
-              Live session metrics được quản lý qua TikTok Shop API. Campaign ID: <span className="font-mono">{campaign.id}</span>
+          <div className="bg-white border border-gray-100 rounded-xl p-6 text-center">
+            <div className="text-xs text-gray-400">
+              GMV Live — metrics được tổng hợp từ TikTok Shop API.<br />
+              Campaign ID: <span className="font-mono">{campaign.id}</span>
             </div>
           </div>
         )}
+
       </div>
     </div>
   )
