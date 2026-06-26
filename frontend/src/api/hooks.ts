@@ -40,6 +40,19 @@ export function useAlerts(companyId: string | null) {
   })
 }
 
+export function useCreatives(campaignId: string | null) {
+  return useQuery({
+    queryKey: ['creatives', campaignId],
+    queryFn: async () => {
+      if (!campaignId) return []
+      const r = await api.get(`/creatives/${campaignId}`)
+      return r.data
+    },
+    enabled: !!campaignId,
+    staleTime: 2 * 60 * 1000,
+  })
+}
+
 export function useSyncCampaigns(companyId: string | null) {
   const qc = useQueryClient()
   return useMutation({
@@ -51,6 +64,63 @@ export function useSyncCampaigns(companyId: string | null) {
       qc.invalidateQueries({ queryKey: ['campaigns', companyId] })
       qc.invalidateQueries({ queryKey: ['gmv', companyId] })
       qc.invalidateQueries({ queryKey: ['alerts', companyId] })
+    },
+  })
+}
+
+export function useUpdateCampaignStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, status, type, companyId }: { id: string; status: string; type: string; companyId: string }) => {
+      const path = type === 'standard' ? `/campaigns/${id}/status` : `/gmv/campaigns/${id}/status`
+      await api.patch(path, null, { params: { status } })
+      return { id, status, companyId }
+    },
+    onSuccess: ({ companyId }) => {
+      qc.invalidateQueries({ queryKey: ['campaigns', companyId] })
+      qc.invalidateQueries({ queryKey: ['gmv', companyId] })
+    },
+  })
+}
+
+export function useUpdateCreativeStatus(campaignId: string) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      await api.patch(`/creatives/${id}/status`, null, { params: { status } })
+      return { id, status }
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['creatives', campaignId] })
+    },
+  })
+}
+
+export function useResolveAlert(companyId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (alertId: string) => {
+      await api.patch(`/alerts/${alertId}/resolve`)
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['alerts', companyId] })
+    },
+  })
+}
+
+export function useCreateCampaign(companyId: string | null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (data: {
+      name: string; type: string; objective?: string
+      budget_daily: number; budget_type: string
+      alert_config: { budget_warning_pct: number; min_roas?: number; min_roi?: number }
+    }) => {
+      const r = await api.post('/campaigns/', data, { params: { company_id: companyId } })
+      return r.data
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['campaigns', companyId] })
     },
   })
 }

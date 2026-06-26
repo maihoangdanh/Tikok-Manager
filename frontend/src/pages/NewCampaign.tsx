@@ -2,24 +2,49 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Info } from 'lucide-react'
 import Topbar from '@/components/layout/Topbar'
+import { useWorkspace } from '@/context/WorkspaceContext'
+import { useCreateCampaign } from '@/api/hooks'
 import type { CampaignType } from '@/types'
 
 export default function NewCampaign() {
   const navigate = useNavigate()
+  const { company } = useWorkspace()
+  const createCampaign = useCreateCampaign(company?.id ?? null)
+
   const [type, setType] = useState<CampaignType>('standard')
   const [name, setName] = useState('')
   const [budget, setBudget] = useState('')
   const [objective, setObjective] = useState('conversions')
+  const [budgetWarning, setBudgetWarning] = useState('80')
   const [minRoas, setMinRoas] = useState('2.0')
   const [minRoi, setMinRoi] = useState('3.0')
+  const [error, setError] = useState('')
 
   const isGmv = type !== 'standard'
 
-  function submit(e: React.FormEvent) {
+  async function submit(e: React.FormEvent) {
     e.preventDefault()
-    if (!name || !budget) { alert('Điền tên và budget'); return }
-    alert(`Tạo campaign "${name}" thành công (mock)`)
-    navigate('/campaigns')
+    setError('')
+    if (!name.trim()) { setError('Điền tên campaign'); return }
+    if (!budget || Number(budget) <= 0) { setError('Budget phải lớn hơn 0'); return }
+    if (!company) { setError('Chọn công ty trước'); return }
+
+    try {
+      await createCampaign.mutateAsync({
+        name: name.trim(),
+        type,
+        objective: isGmv ? undefined : objective,
+        budget_daily: Number(budget),
+        budget_type: 'BUDGET_MODE_DAY',
+        alert_config: {
+          budget_warning_pct: Number(budgetWarning),
+          ...(isGmv ? { min_roi: Number(minRoi) } : { min_roas: Number(minRoas) }),
+        },
+      })
+      navigate('/campaigns')
+    } catch (err: any) {
+      setError(err?.response?.data?.detail ?? 'Lỗi khi tạo campaign')
+    }
   }
 
   return (
@@ -27,6 +52,10 @@ export default function NewCampaign() {
       <Topbar title="Tạo campaign mới" breadcrumb={{ label: 'Campaigns', to: '/campaigns' }} />
       <div className="flex-1 overflow-y-auto p-6">
         <form onSubmit={submit} className="max-w-lg space-y-5">
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-xs text-red-700">{error}</div>
+          )}
 
           <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Thông tin cơ bản</div>
@@ -69,16 +98,10 @@ export default function NewCampaign() {
 
           <div className="bg-white border border-gray-100 rounded-xl p-4 space-y-3">
             <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Ngân sách</div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1.5">Budget ngày (₫)</label>
-                <input type="number" value={budget} onChange={e => setBudget(e.target.value)} placeholder="500000"
-                  className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-700 block mb-1.5">Ngày bắt đầu</label>
-                <input type="date" className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400" />
-              </div>
+            <div>
+              <label className="text-xs font-medium text-gray-700 block mb-1.5">Budget ngày (₫)</label>
+              <input type="number" value={budget} onChange={e => setBudget(e.target.value)} placeholder="500000" min={1}
+                className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100" />
             </div>
           </div>
 
@@ -87,19 +110,19 @@ export default function NewCampaign() {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="text-xs font-medium text-gray-700 block mb-1.5">Cảnh báo budget (%)</label>
-                <input type="number" defaultValue={80} min={50} max={100}
+                <input type="number" value={budgetWarning} onChange={e => setBudgetWarning(e.target.value)} min={50} max={100}
                   className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400" />
               </div>
               {!isGmv ? (
                 <div>
                   <label className="text-xs font-medium text-gray-700 block mb-1.5">ROAS tối thiểu</label>
-                  <input type="number" value={minRoas} onChange={e => setMinRoas(e.target.value)} step={0.1}
+                  <input type="number" value={minRoas} onChange={e => setMinRoas(e.target.value)} step={0.1} min={0}
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400" />
                 </div>
               ) : (
                 <div>
                   <label className="text-xs font-medium text-gray-700 block mb-1.5">ROI tối thiểu</label>
-                  <input type="number" value={minRoi} onChange={e => setMinRoi(e.target.value)} step={0.1}
+                  <input type="number" value={minRoi} onChange={e => setMinRoi(e.target.value)} step={0.1} min={0}
                     className="w-full text-sm border border-gray-200 rounded-xl px-3 py-2 focus:outline-none focus:border-blue-400" />
                 </div>
               )}
@@ -111,9 +134,9 @@ export default function NewCampaign() {
               className="flex-1 py-2.5 text-sm border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors font-medium">
               Hủy
             </button>
-            <button type="submit"
-              className="flex-1 py-2.5 text-sm bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold">
-              Tạo campaign
+            <button type="submit" disabled={createCampaign.isPending}
+              className="flex-1 py-2.5 text-sm bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-semibold disabled:opacity-50">
+              {createCampaign.isPending ? 'Đang tạo...' : 'Tạo campaign'}
             </button>
           </div>
         </form>

@@ -1,73 +1,103 @@
 import { useParams } from 'react-router-dom'
-import { Video, Image } from 'lucide-react'
+import { ExternalLink } from 'lucide-react'
 import Topbar from '@/components/layout/Topbar'
 import StatusBadge from '@/components/ui/StatusBadge'
 import DeltaBadge from '@/components/ui/DeltaBadge'
-import { MOCK_CAMPAIGNS } from '@/data/mock'
+import { useWorkspace } from '@/context/WorkspaceContext'
+import { useCampaigns, useUpdateCampaignStatus } from '@/api/hooks'
 import { formatCurrency, formatNumber } from '@/lib/utils'
-import { isStdMetrics } from '@/types'
-
-const MOCK_ADS = [
-  { id: 'a1', campaignId: 'c1', name: 'Flash Sale Video 15s', format: 'video' as const, status: 'active' as const,
-    metrics: { spend: 1850000, roas: 4.8, impressions: 62000, clicks: 1302, ctr: 2.1, cpc: 1050, conversions: 88, cpa: 21000 },
-    prev: { spend: 1520000, roas: 4.1, impressions: 51000, clicks: 1071, ctr: 1.8, cpc: 1140, conversions: 66, cpa: 23000 } },
-  { id: 'a2', campaignId: 'c1', name: 'Flash Sale Banner', format: 'image' as const, status: 'active' as const,
-    metrics: { spend: 1400000, roas: 3.9, impressions: 48000, clicks: 1008, ctr: 1.8, cpc: 1280, conversions: 71, cpa: 26000 },
-    prev: { spend: 1180000, roas: 3.5, impressions: 40000, clicks: 840, ctr: 1.6, cpc: 1404, conversions: 55, cpa: 28700 } },
-  { id: 'a3', campaignId: 'c1', name: 'Testimonial 30s', format: 'video' as const, status: 'paused' as const,
-    metrics: { spend: 950000, roas: 1.6, impressions: 32000, clicks: 890, ctr: 0.9, cpc: 1840, conversions: 39, cpa: 52100 },
-    prev: { spend: 1230000, roas: 2.8, impressions: 29000, clicks: 1025, ctr: 1.7, cpc: 1596, conversions: 30, cpa: 41000 } },
-]
 
 export default function CampaignDetail() {
   const { id } = useParams<{ id: string }>()
-  const campaign = MOCK_CAMPAIGNS.find(c => c.id === id)
-  const ads = MOCK_ADS.filter(a => a.campaignId === id)
-  if (!campaign || !isStdMetrics(campaign.metrics)) return <div className="p-6 text-gray-400">Campaign không tồn tại.</div>
+  const { company, period } = useWorkspace()
+  const { data: campaigns = [], isLoading } = useCampaigns(company?.id ?? null, period)
+  const updateStatus = useUpdateCampaignStatus()
+
+  const campaign = campaigns.find((c: any) => c.id === id)
+
+  if (isLoading) return <div className="p-6 text-xs text-gray-400">Đang tải...</div>
+  if (!campaign) return <div className="p-6 text-gray-400 text-sm">Campaign không tồn tại hoặc không phải standard campaign.</div>
+
+  const m = campaign.metrics
+  const pm = campaign.prev_metrics
+
+  function toggleStatus() {
+    const newStatus = campaign.status === 'active' ? 'paused' : 'active'
+    updateStatus.mutate({ id: campaign.id, status: newStatus, type: 'standard', companyId: company!.id })
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       <Topbar title={campaign.name} breadcrumb={{ label: 'Campaigns', to: '/campaigns' }} />
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {ads.length === 0 ? (
-          <div className="bg-white border border-gray-100 rounded-xl p-8 text-center text-gray-400 text-sm">
-            Chưa có ads trong campaign này.
-          </div>
-        ) : ads.map(ad => {
-          const Icon = ad.format === 'video' ? Video : Image
-          return (
-            <div key={ad.id} className="bg-white border border-gray-100 rounded-xl p-4 flex gap-4 hover:shadow-sm transition-shadow">
-              <div className="w-14 h-14 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                <Icon size={20} className="text-gray-400" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-gray-800 mb-0.5">{ad.name}</div>
-                <div className="text-[10px] text-gray-400 capitalize mb-3">{ad.format}</div>
-                <div className="grid grid-cols-5 gap-4">
-                  {[
-                    { label: 'Chi tiêu', val: formatCurrency(ad.metrics.spend), cur: ad.metrics.spend, prev: ad.prev.spend },
-                    { label: 'ROAS', val: `${ad.metrics.roas.toFixed(1)}x`, cur: ad.metrics.roas, prev: ad.prev.roas },
-                    { label: 'Clicks', val: formatNumber(ad.metrics.clicks), cur: ad.metrics.clicks, prev: ad.prev.clicks },
-                    { label: 'CTR', val: `${ad.metrics.ctr.toFixed(1)}%`, cur: ad.metrics.ctr, prev: ad.prev.ctr },
-                    { label: 'CPC', val: formatCurrency(ad.metrics.cpc), cur: ad.metrics.cpc, prev: ad.prev.cpc, lower: true },
-                  ].map(m => (
-                    <div key={m.label}>
-                      <div className="text-[10px] text-gray-400 mb-0.5">{m.label}</div>
-                      <div className="text-sm font-semibold text-gray-800">{m.val}</div>
-                      <DeltaBadge current={m.cur} previous={m.prev} lowerIsBetter={m.lower} />
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                <StatusBadge status={ad.status} />
-                <button className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-colors ${ad.status === 'active' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'bg-blue-600 text-white border-blue-600'}`}>
-                  {ad.status === 'active' ? 'Pause' : 'Enable'}
-                </button>
-              </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+
+        {/* Campaign header */}
+        <div className="bg-white border border-gray-100 rounded-xl p-4 flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-gray-800 mb-1">{campaign.name}</div>
+            <div className="flex items-center gap-2">
+              <StatusBadge status={campaign.status} />
+              {campaign.objective && (
+                <span className="text-[10px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full capitalize">{campaign.objective}</span>
+              )}
             </div>
-          )
-        })}
+          </div>
+          <button
+            onClick={toggleStatus}
+            disabled={updateStatus.isPending}
+            className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors disabled:opacity-50 ${campaign.status === 'active' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'bg-blue-600 text-white border-blue-600 hover:bg-blue-700'}`}>
+            {updateStatus.isPending ? '...' : campaign.status === 'active' ? 'Pause' : 'Enable'}
+          </button>
+        </div>
+
+        {/* Metrics */}
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: 'Chi tiêu', val: formatCurrency(m.spend), cur: m.spend, prev: pm.spend },
+            { label: 'ROAS', val: m.roas > 0 ? `${m.roas.toFixed(1)}x` : '—', cur: m.roas, prev: pm.roas },
+            { label: 'Clicks', val: formatNumber(m.clicks), cur: m.clicks, prev: pm.clicks },
+            { label: 'CTR', val: `${m.ctr.toFixed(2)}%`, cur: m.ctr, prev: pm.ctr },
+            { label: 'CPC', val: formatCurrency(m.cpc), cur: m.cpc, prev: pm.cpc, lower: true },
+            { label: 'Impressions', val: formatNumber(m.impressions), cur: m.impressions, prev: pm.impressions },
+            { label: 'Conversions', val: String(m.conversions), cur: m.conversions, prev: pm.conversions },
+            { label: 'CPA', val: m.cpa > 0 ? formatCurrency(m.cpa) : '—', cur: m.cpa, prev: pm.cpa, lower: true },
+          ].map(metric => (
+            <div key={metric.label} className="bg-white border border-gray-100 rounded-xl p-3.5">
+              <div className="text-[11px] text-gray-500 mb-1">{metric.label}</div>
+              <div className="text-lg font-semibold text-gray-900 mb-1">{metric.val}</div>
+              <DeltaBadge current={metric.cur} previous={metric.prev} lowerIsBetter={'lower' in metric && metric.lower} />
+            </div>
+          ))}
+        </div>
+
+        {/* Budget */}
+        <div className="bg-white border border-gray-100 rounded-xl p-4">
+          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Ngân sách</div>
+          <div className="flex items-center gap-4">
+            <div>
+              <div className="text-[11px] text-gray-400 mb-0.5">Budget ngày</div>
+              <div className="text-sm font-semibold">{formatCurrency(campaign.budget_daily)}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-0.5">Đã chi hôm nay</div>
+              <div className="text-sm font-semibold">{formatCurrency(campaign.budget_spend)}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-gray-400 mb-0.5">Còn lại</div>
+              <div className="text-sm font-semibold text-green-700">{formatCurrency(Math.max(0, campaign.budget_daily - campaign.budget_spend))}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Ads management note */}
+        <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 flex items-center gap-3">
+          <ExternalLink size={16} className="text-gray-400 flex-shrink-0" />
+          <div>
+            <div className="text-xs font-medium text-gray-700 mb-0.5">Quản lý Ads & Ad Groups</div>
+            <div className="text-[11px] text-gray-500">Để xem và quản lý từng ad trong campaign này, truy cập TikTok Ads Manager. Campaign ID: <span className="font-mono">{campaign.id}</span></div>
+          </div>
+        </div>
+
       </div>
     </div>
   )

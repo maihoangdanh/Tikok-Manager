@@ -6,7 +6,7 @@ import CampaignTypeBadge from '@/components/ui/CampaignTypeBadge'
 import DeltaBadge from '@/components/ui/DeltaBadge'
 import ProgressBar from '@/components/ui/ProgressBar'
 import { useWorkspace } from '@/context/WorkspaceContext'
-import { useCampaigns, useGmvCampaigns } from '@/api/hooks'
+import { useCampaigns, useGmvCampaigns, useUpdateCampaignStatus } from '@/api/hooks'
 import { formatCurrency } from '@/lib/utils'
 import { isStdMetrics, isGmvMetrics, type CampaignType, type CampaignStatus } from '@/types'
 
@@ -18,6 +18,7 @@ export default function Campaigns() {
 
   const { data: stdCamps = [], isLoading: loadingStd } = useCampaigns(company?.id ?? null, period)
   const { data: gmvCamps = [], isLoading: loadingGmv } = useGmvCampaigns(company?.id ?? null, period)
+  const updateStatus = useUpdateCampaignStatus()
 
   const all = [...stdCamps, ...gmvCamps]
   const filtered = all.filter((c: any) =>
@@ -103,7 +104,10 @@ export default function Campaigns() {
                         </td>
                         <td className="px-3 py-3"><ProgressBar spend={c.budget_spend} budget={c.budget_daily} /></td>
                         <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
-                          <button className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-colors ${c.status === 'active' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'bg-blue-600 text-white border-blue-600'}`}>
+                          <button
+                            onClick={() => updateStatus.mutate({ id: c.id, status: c.status === 'active' ? 'paused' : 'active', type: c.type, companyId: company!.id })}
+                            disabled={updateStatus.isPending}
+                            className={`text-[11px] px-2.5 py-1 rounded-lg border font-medium transition-colors disabled:opacity-50 ${c.status === 'active' ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'bg-blue-600 text-white border-blue-600'}`}>
                             {c.status === 'active' ? 'Pause' : 'Enable'}
                           </button>
                         </td>
